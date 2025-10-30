@@ -1,0 +1,24 @@
+# This is the network config written by 'subiquity'
+network:
+  ethernets:
+    enp1s0:
+      addresses:
+      - 172.21.198.44/24
+      - 192.168.10.1/24
+      dhcp4: true
+    enp2s0:
+      addresses:
+      - 192.168.9.1/24
+      dhcp4: true
+    enp3s0:
+      addresses:
+      - 192.168.7.1/24
+      dhcp4: true
+    enp4s0:
+      addresses:
+      - 192.168.8.1/24
+      dhcp4: true
+    eth0:
+      dhcp4: true
+  renderer: networkd
+  version: 2
