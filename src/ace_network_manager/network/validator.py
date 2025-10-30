@@ -71,27 +71,65 @@ class NetplanValidator:
                 SubnetOverlapError,
             )
 
-            # Try to extract custom exceptions from the validation error chain
-            if hasattr(e, "__cause__") and isinstance(e.__cause__, SubnetOverlapError):
-                exc = e.__cause__
-                errors.append(
-                    f"Subnet overlap: Interface '{exc.interface1}' ({exc.subnet1}) "
-                    f"overlaps with interface '{exc.interface2}' ({exc.subnet2})"
-                )
-            elif hasattr(e, "__cause__") and isinstance(e.__cause__, DuplicateAddressError):
-                exc = e.__cause__
-                errors.append(
-                    f"Duplicate address: Interface '{exc.interface}' has "
-                    f"duplicate address {exc.address}"
-                )
-            else:
-                # Extract all validation errors from Pydantic
-                for error in e.errors():
+            # Extract all validation errors from Pydantic
+            for error in e.errors():
+                # Check if this error wraps one of our custom exceptions
+                ctx = error.get("ctx", {})
+                error_value = ctx.get("error") if ctx else None
+
+                # Check the exception type in the error context
+                if isinstance(error_value, SubnetOverlapError):
+                    exc = error_value
+                    errors.append(
+                        f"Subnet overlap: Interface '{exc.interface1}' ({exc.subnet1}) "
+                        f"overlaps with interface '{exc.interface2}' ({exc.subnet2})"
+                    )
+                elif isinstance(error_value, DuplicateAddressError):
+                    exc = error_value
+                    errors.append(
+                        f"Duplicate address: Interface '{exc.interface}' has "
+                        f"duplicate address {exc.address}"
+                    )
+                else:
+                    # Standard Pydantic error formatting
                     location = " -> ".join(str(loc) for loc in error["loc"])
                     message = error["msg"]
-                    errors.append(f"{location}: {message}")
+
+                    # Clean up the message if it contains our exception
+                    if "SubnetOverlapError:" in message:
+                        # Extract our custom exception from the message
+                        parts = message.split("SubnetOverlapError:", 1)
+                        if len(parts) > 1:
+                            errors.append(parts[1].strip())
+                        else:
+                            errors.append(message)
+                    elif "DuplicateAddressError:" in message:
+                        parts = message.split("DuplicateAddressError:", 1)
+                        if len(parts) > 1:
+                            errors.append(parts[1].strip())
+                        else:
+                            errors.append(message)
+                    else:
+                        errors.append(f"{location}: {message}")
         except Exception as e:
-            errors.append(f"Unexpected error: {type(e).__name__}: {e}")
+            # Check if it's one of our custom exceptions that escaped
+            from ace_network_manager.core.exceptions import (
+                DuplicateAddressError,
+                SubnetOverlapError,
+            )
+
+            if isinstance(e, SubnetOverlapError):
+                errors.append(
+                    f"Subnet overlap: Interface '{e.interface1}' ({e.subnet1}) "
+                    f"overlaps with interface '{e.interface2}' ({e.subnet2})"
+                )
+            elif isinstance(e, DuplicateAddressError):
+                errors.append(
+                    f"Duplicate address: Interface '{e.interface}' has "
+                    f"duplicate address {e.address}"
+                )
+            else:
+                errors.append(f"Unexpected error: {type(e).__name__}: {e}")
 
         # If we got this far without errors, validation passed
         valid = len(errors) == 0
