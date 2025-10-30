@@ -1,0 +1,12 @@
+# Ensure proper line endings and text handling
+*.md text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+
+# Ensure README renders correctly on GitHub
+README.md text eol=lf
