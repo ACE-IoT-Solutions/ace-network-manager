@@ -88,12 +88,17 @@ class StateTracker:
                 if data:
                     try:
                         existing = ConfigurationState.from_dict(data)
-                        msg = (
-                            f"Cannot create new pending state: existing state {existing.state_id} "
-                            f"is still pending (expires at {existing.timeout_at})"
-                        )
-                        raise StateError(msg)
+                        if existing.status == StateStatus.PENDING:
+                            msg = (
+                                f"Cannot create new pending state: existing state {existing.state_id} "
+                                f"is still pending (expires at {existing.timeout_at})"
+                            )
+                            raise StateError(msg)
+                    except StateError:
+                        # Re-raise StateError
+                        raise
                     except Exception:  # noqa: BLE001
+                        # Invalid state file, ignore
                         pass
 
             # Create new state
@@ -187,11 +192,25 @@ class StateTracker:
             StateError: State not found or not in pending status
         """
         with self._get_lock():
-            # Get the state
-            state = self.get_state(state_id)
-            if not state:
+            # Get the state (without nested lock)
+            pending_file = self.pending_dir / f"{state_id}.json"
+            archive_file_check = self.archive_dir / f"{state_id}.json"
+
+            # Try pending first
+            data = safe_read_json(pending_file)
+            if not data:
+                # Try archive
+                data = safe_read_json(archive_file_check)
+
+            if not data:
                 msg = f"State {state_id} not found"
                 raise StateError(msg)
+
+            try:
+                state = ConfigurationState.from_dict(data)
+            except Exception as e:
+                msg = f"Invalid state data: {e}"
+                raise StateError(msg) from e
 
             if state.status != StateStatus.PENDING:
                 msg = f"State {state_id} is not pending (current status: {state.status})"
@@ -202,7 +221,6 @@ class StateTracker:
             state.confirmed_at = datetime.now()
 
             # Move from pending to archive
-            pending_file = self.pending_dir / f"{state_id}.json"
             archive_file = self.archive_dir / f"{state_id}.json"
 
             atomic_write_json(archive_file, state.to_dict(), mode=STATE_FILE_PERMS)
@@ -226,11 +244,25 @@ class StateTracker:
             StateError: State not found
         """
         with self._get_lock():
-            # Get the state
-            state = self.get_state(state_id)
-            if not state:
+            # Get the state (without nested lock)
+            pending_file = self.pending_dir / f"{state_id}.json"
+            archive_file_check = self.archive_dir / f"{state_id}.json"
+
+            # Try pending first
+            data = safe_read_json(pending_file)
+            if not data:
+                # Try archive
+                data = safe_read_json(archive_file_check)
+
+            if not data:
                 msg = f"State {state_id} not found"
                 raise StateError(msg)
+
+            try:
+                state = ConfigurationState.from_dict(data)
+            except Exception as e:
+                msg = f"Invalid state data: {e}"
+                raise StateError(msg) from e
 
             # Update state
             state.status = StateStatus.ROLLBACK_COMPLETE
@@ -238,7 +270,6 @@ class StateTracker:
             state.rollback_reason = reason
 
             # Move from pending to archive
-            pending_file = self.pending_dir / f"{state_id}.json"
             archive_file = self.archive_dir / f"{state_id}.json"
 
             atomic_write_json(archive_file, state.to_dict(), mode=STATE_FILE_PERMS)
