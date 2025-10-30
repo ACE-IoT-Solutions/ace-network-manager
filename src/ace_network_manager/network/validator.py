@@ -65,11 +65,31 @@ class NetplanValidator:
         except ValueError as e:
             errors.append(f"YAML parsing error: {e}")
         except ValidationError as e:
-            # Extract all validation errors from Pydantic
-            for error in e.errors():
-                location = " -> ".join(str(loc) for loc in error["loc"])
-                message = error["msg"]
-                errors.append(f"{location}: {message}")
+            # Check if it contains our custom exceptions with structured data
+            from ace_network_manager.core.exceptions import (
+                DuplicateAddressError,
+                SubnetOverlapError,
+            )
+
+            # Try to extract custom exceptions from the validation error chain
+            if hasattr(e, "__cause__") and isinstance(e.__cause__, SubnetOverlapError):
+                exc = e.__cause__
+                errors.append(
+                    f"Subnet overlap: Interface '{exc.interface1}' ({exc.subnet1}) "
+                    f"overlaps with interface '{exc.interface2}' ({exc.subnet2})"
+                )
+            elif hasattr(e, "__cause__") and isinstance(e.__cause__, DuplicateAddressError):
+                exc = e.__cause__
+                errors.append(
+                    f"Duplicate address: Interface '{exc.interface}' has "
+                    f"duplicate address {exc.address}"
+                )
+            else:
+                # Extract all validation errors from Pydantic
+                for error in e.errors():
+                    location = " -> ".join(str(loc) for loc in error["loc"])
+                    message = error["msg"]
+                    errors.append(f"{location}: {message}")
         except Exception as e:
             errors.append(f"Unexpected error: {type(e).__name__}: {e}")
 

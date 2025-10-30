@@ -11,6 +11,8 @@ from pydantic import (
     model_validator,
 )
 
+from ace_network_manager.core.exceptions import DuplicateAddressError, SubnetOverlapError
+
 
 class NetplanNameservers(BaseModel):
     """DNS nameserver configuration."""
@@ -236,26 +238,38 @@ class NetplanNetwork(BaseModel):
 
     @model_validator(mode="after")
     def validate_no_duplicate_subnets(self) -> "NetplanNetwork":
-        """Validate no two interfaces share the same subnet (common error #2)."""
-        subnet_map: dict[str, str] = {}  # subnet -> interface name
+        """Validate no two DIFFERENT interfaces share the same subnet (common error #2).
+
+        Note: A single interface CAN have multiple addresses in the same subnet.
+        This only checks for subnet overlap between DIFFERENT interfaces.
+        """
+        # Map: subnet -> interface name
+        subnet_map: dict[str, str] = {}
 
         def check_interface(name: str, addrs: list[str]) -> None:
+            """Check if interface's subnets overlap with OTHER interfaces."""
             for addr_str in addrs:
                 network = ipaddress.ip_network(addr_str, strict=False)
                 subnet_key = str(network)
 
-                # Check against existing subnets
+                # Check against existing subnets from OTHER interfaces
                 for existing_subnet_str, existing_iface in subnet_map.items():
+                    # Allow same interface to have multiple IPs in same subnet
+                    if existing_iface == name:
+                        continue
+
                     existing_subnet = ipaddress.ip_network(existing_subnet_str)
 
-                    # Check if networks overlap
+                    # Check if networks overlap between DIFFERENT interfaces
                     if network.overlaps(existing_subnet):
-                        msg = (
-                            f"Subnet overlap: interface '{name}' ({subnet_key}) "
-                            f"overlaps with '{existing_iface}' ({existing_subnet_str})"
+                        raise SubnetOverlapError(
+                            interface1=name,
+                            subnet1=subnet_key,
+                            interface2=existing_iface,
+                            subnet2=existing_subnet_str,
                         )
-                        raise ValueError(msg)
 
+                # Track this subnet for this interface
                 subnet_map[subnet_key] = name
 
         # Check all ethernet interfaces

@@ -143,8 +143,10 @@ class TestNetplanNetwork:
             NetplanNetwork(version=2, renderer="invalid", ethernets={})
 
     def test_no_duplicate_subnets(self) -> None:
-        """Test interfaces cannot share same subnet (common error #2)."""
-        with pytest.raises(ValidationError, match="Subnet overlap"):
+        """Test different interfaces cannot share same subnet (common error #2)."""
+        from ace_network_manager.core.exceptions import SubnetOverlapError
+
+        with pytest.raises(SubnetOverlapError) as exc_info:
             NetplanNetwork(
                 version=2,
                 ethernets={
@@ -152,6 +154,30 @@ class TestNetplanNetwork:
                     "eth1": NetplanEthernet(addresses=["192.168.1.20/24"]),
                 },
             )
+
+        # Check that the exception has the expected attributes
+        error = exc_info.value
+        assert error.interface1 == "eth1"
+        assert error.subnet1 == "192.168.1.0/24"
+        assert error.interface2 == "eth0"
+        assert error.subnet2 == "192.168.1.0/24"
+
+    def test_same_interface_multiple_ips_same_subnet_allowed(self) -> None:
+        """Test that a single interface CAN have multiple IPs in the same subnet."""
+        # This should NOT raise an error
+        network = NetplanNetwork(
+            version=2,
+            ethernets={
+                "eth0": NetplanEthernet(
+                    addresses=[
+                        "192.168.1.10/24",
+                        "192.168.1.11/24",
+                        "192.168.1.12/24",
+                    ]
+                ),
+            },
+        )
+        assert len(network.ethernets["eth0"].addresses) == 3
 
     def test_vlan_parent_must_exist(self) -> None:
         """Test VLAN parent interface must exist (common error #8)."""
