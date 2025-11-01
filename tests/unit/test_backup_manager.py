@@ -272,3 +272,51 @@ network:
 
         # Should be identical
         assert backed_up_content == original_content
+
+    def test_restore_removes_extra_files(self, tmp_path: Path) -> None:
+        """Test that restore removes YAML files not in the backup."""
+        # Setup: create original config with one file
+        config_dir = tmp_path / "netplan"
+        config_dir.mkdir()
+
+        original_config = config_dir / "00-installer.yaml"
+        original_config.write_text("""
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+""")
+
+        backup_dir = tmp_path / "backups"
+        manager = BackupManager(backup_dir=backup_dir, config_dir=config_dir)
+
+        # Create backup (has only 00-installer.yaml)
+        backup_path, _ = manager.create_backup(description="Original config")
+
+        # Add a new file that wasn't in the backup
+        new_config = config_dir / "01-new-config.yaml"
+        new_config.write_text("""
+network:
+  version: 2
+  ethernets:
+    eth1:
+      addresses:
+        - 192.168.1.10/24
+""")
+
+        # Verify both files exist
+        assert original_config.exists()
+        assert new_config.exists()
+        assert len(list(config_dir.glob("*.yaml"))) == 2
+
+        # Restore from backup
+        manager.restore_backup(backup_path, verify=True)
+
+        # Only the original file should exist
+        assert original_config.exists()
+        assert not new_config.exists()
+        assert len(list(config_dir.glob("*.yaml"))) == 1
+
+        # Content should match original
+        assert "dhcp4: true" in original_config.read_text()

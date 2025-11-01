@@ -247,6 +247,15 @@ class BackupManager:
                     msg += f"  - {error}\n"
                 raise BackupError(msg)
 
+        # Remove all existing YAML files from config directory
+        # This ensures we don't have leftover configs that would interfere
+        try:
+            for existing_yaml in self.config_dir.glob("*.yaml"):
+                existing_yaml.unlink()
+        except Exception as e:
+            msg = f"Failed to clear config directory: {e}"
+            raise BackupError(msg) from e
+
         # Copy files to config directory
         for filename in metadata.source_configs:
             source_file = backup_path / filename

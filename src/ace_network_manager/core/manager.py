@@ -146,17 +146,30 @@ class NetworkConfigManager:
                 errors=[str(e)],
             )
 
-        # Step 4: Copy new config to netplan directory
+        # Step 4: Clear existing configs and copy new one to netplan directory
         try:
             import shutil
+
+            # Remove all existing YAML files first
+            # This ensures netplan apply only processes our new config
+            for existing_yaml in self.netplan_backend.config_dir.glob("*.yaml"):
+                existing_yaml.unlink()
+
+            # Copy new config
             dest = self.netplan_backend.config_dir / config_path.name
             shutil.copy2(config_path, dest)
         except Exception as e:
+            # If copy fails, we should try to restore the backup immediately
+            try:
+                self.backup_manager.restore_backup(backup_path, verify=False)
+            except Exception:  # noqa: BLE001
+                pass  # We'll report the original error
+
             return ApplyResult(
                 success=False,
                 backup_path=backup_path,
                 state_id=state.state_id,
-                message=f"Failed to copy config: {e}",
+                message=f"Failed to replace config: {e}",
                 timeout_seconds=0,
                 errors=[str(e)],
             )
