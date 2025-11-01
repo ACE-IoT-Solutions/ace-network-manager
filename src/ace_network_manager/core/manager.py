@@ -196,16 +196,23 @@ class NetworkConfigManager:
                 check_dns=True,
                 check_internet=False,  # Don't require internet
                 timeout=10,
+                dhcp_timeout=30,  # Give DHCP time to complete
             )
 
             if not connectivity_result.success:
                 # Connectivity failed - rollback
                 await self._perform_rollback(state.state_id, reason="connectivity_check_failed")
+
+                # Build detailed error message
+                error_msg = "Connectivity check failed:\n"
+                for failure in connectivity_result.failures:
+                    error_msg += f"  - {failure}\n"
+
                 return ApplyResult(
                     success=False,
                     backup_path=backup_path,
                     state_id=state.state_id,
-                    message="Connectivity check failed",
+                    message=error_msg.strip(),
                     timeout_seconds=0,
                     errors=connectivity_result.failures,
                 )
