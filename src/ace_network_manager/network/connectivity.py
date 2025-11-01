@@ -25,22 +25,24 @@ class ConnectivityChecker:
         check_internet: bool = True,
         timeout: int = 10,
         dhcp_timeout: int = 30,
+        config_uses_dhcp: bool = False,
     ) -> ConnectivityResult:
         """Perform comprehensive connectivity checks with DHCP awareness.
 
         This performs multi-stage validation:
-        1. Check if DHCP is in use
-        2. If yes, wait for DHCP to obtain lease and address
+        1. If DHCP is configured, wait for lease acquisition
+        2. Add grace period for network to stabilize
         3. Verify DNS servers are configured (from DHCP or static)
-        4. Test DNS resolution
+        4. Test DNS resolution with appropriate timeout
         5. Test gateway reachability
 
         Args:
             check_gateway: Test default gateway reachability
             check_dns: Test DNS resolution
             check_internet: Test external connectivity
-            timeout: Seconds to wait for DNS/gateway checks
+            timeout: Seconds to wait for DNS/gateway checks (static configs)
             dhcp_timeout: Seconds to wait for DHCP lease acquisition
+            config_uses_dhcp: Whether the applied config uses DHCP on any interface
 
         Returns:
             ConnectivityResult with success status, failures, and warnings
@@ -48,40 +50,44 @@ class ConnectivityChecker:
         failures: list[str] = []
         warnings: list[str] = []
 
-        # Stage 1: Check if DHCP is being used
-        dhcp_interfaces = await self._get_dhcp_interfaces()
+        # Stage 1: If DHCP is configured, wait for it to complete
+        if config_uses_dhcp:
+            # Give netplan a moment to start DHCP clients
+            await asyncio.sleep(2)
 
-        if dhcp_interfaces:
-            # Stage 2: Wait for DHCP to complete on all interfaces
-            dhcp_ok = await self._wait_for_dhcp_leases(dhcp_interfaces, dhcp_timeout)
+            # Stage 2: Wait for DHCP to obtain leases
+            dhcp_ok = await self._wait_for_dhcp_lease_any(dhcp_timeout)
             if not dhcp_ok:
                 failures.append(
-                    f"DHCP failed to obtain lease on interfaces: {', '.join(dhcp_interfaces)}"
+                    f"DHCP failed to obtain lease within {dhcp_timeout}s timeout"
                 )
                 # Don't continue - no point checking DNS if we don't have network config
                 return ConnectivityResult(success=False, failures=failures, warnings=warnings)
 
-            # Stage 3: Verify we got DNS servers from DHCP or have static ones
+            # Stage 3: Give routes and DNS time to propagate (systemd-resolved, etc.)
+            await asyncio.sleep(3)
+
+            # Stage 4: Verify we got DNS servers
             dns_servers = await self._get_configured_dns_servers()
             if not dns_servers:
-                failures.append("No DNS servers configured (DHCP did not provide DNS)")
-                # Continue anyway - gateway might work
+                warnings.append("No DNS servers found in /etc/resolv.conf (DHCP may not have provided DNS)")
 
-        # Stage 4: Check DNS resolution (with longer timeout for DHCP scenarios)
+        # Stage 5: Check DNS resolution (with longer timeout for DHCP scenarios)
         if check_dns:
             # Use longer timeout for DNS if we're using DHCP
-            dns_timeout = 30 if dhcp_interfaces else timeout
+            dns_timeout = 30 if config_uses_dhcp else timeout
             dns_ok = await self._check_dns(dns_timeout)
             if not dns_ok:
                 failures.append(f"DNS resolution failed after {dns_timeout}s timeout")
 
-        # Stage 5: Check default gateway
+        # Stage 6: Check default gateway (with longer timeout for DHCP)
         if check_gateway:
-            gateway_ok = await self._check_gateway(timeout)
+            gateway_timeout = 20 if config_uses_dhcp else timeout
+            gateway_ok = await self._check_gateway(gateway_timeout)
             if not gateway_ok:
-                failures.append("Cannot reach default gateway")
+                failures.append(f"Cannot reach default gateway (timeout: {gateway_timeout}s)")
 
-        # Stage 6: Check internet connectivity
+        # Stage 7: Check internet connectivity
         if check_internet:
             internet_ok = await self._check_internet(timeout)
             if not internet_ok:
@@ -182,51 +188,16 @@ class ConnectivityChecker:
         except Exception:  # noqa: BLE001
             return False
 
-    async def _get_dhcp_interfaces(self) -> list[str]:
-        """Get list of interfaces configured for DHCP.
+    async def _wait_for_dhcp_lease_any(self, timeout: int) -> bool:
+        """Wait for at least one interface to obtain a DHCP lease.
 
-        Returns:
-            List of interface names using DHCP
-        """
-        dhcp_interfaces: list[str] = []
-
-        try:
-            # Check ip addr output for interfaces with 'dynamic' flag
-            result = await asyncio.create_subprocess_exec(
-                "ip", "-j", "addr", "show",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await result.communicate()
-
-            if result.returncode == 0:
-                import json
-
-                interfaces = json.loads(stdout.decode())
-                for iface in interfaces:
-                    # Check if interface has addresses with 'dynamic' flag
-                    for addr_info in iface.get("addr_info", []):
-                        if addr_info.get("dynamic", False):
-                            ifname = iface.get("ifname", "")
-                            if ifname and ifname not in dhcp_interfaces:
-                                dhcp_interfaces.append(ifname)
-
-        except Exception:  # noqa: BLE001
-            pass
-
-        return dhcp_interfaces
-
-    async def _wait_for_dhcp_leases(
-        self, interfaces: list[str], timeout: int
-    ) -> bool:
-        """Wait for DHCP to obtain leases on specified interfaces.
+        This checks for any interface with a valid (non-link-local) IPv4 address.
 
         Args:
-            interfaces: Interface names to check
             timeout: Maximum seconds to wait
 
         Returns:
-            True if all interfaces obtained addresses
+            True if at least one interface has a valid address
         """
         start_time = asyncio.get_event_loop().time()
 
@@ -235,9 +206,6 @@ class ConnectivityChecker:
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed >= timeout:
                 return False
-
-            # Check if all interfaces have addresses
-            all_have_addresses = True
 
             try:
                 result = await asyncio.create_subprocess_exec(
@@ -250,31 +218,20 @@ class ConnectivityChecker:
                 if result.returncode == 0:
                     import json
 
-                    iface_data = json.loads(stdout.decode())
-                    iface_dict = {iface["ifname"]: iface for iface in iface_data}
+                    interfaces = json.loads(stdout.decode())
 
-                    for ifname in interfaces:
-                        iface = iface_dict.get(ifname)
-                        if not iface:
-                            all_have_addresses = False
-                            break
+                    # Check if any interface has a valid IPv4 address
+                    for iface in interfaces:
+                        # Skip loopback
+                        if iface.get("ifname") == "lo":
+                            continue
 
-                        # Check if interface has a non-link-local IPv4 address
-                        has_valid_address = False
                         for addr_info in iface.get("addr_info", []):
                             if addr_info.get("family") == "inet":
                                 addr = addr_info.get("local", "")
-                                # Skip link-local addresses (169.254.x.x)
-                                if not addr.startswith("169.254."):
-                                    has_valid_address = True
-                                    break
-
-                        if not has_valid_address:
-                            all_have_addresses = False
-                            break
-
-                    if all_have_addresses:
-                        return True
+                                # Skip link-local addresses (169.254.x.x) and localhost
+                                if not addr.startswith("169.254.") and not addr.startswith("127."):
+                                    return True
 
             except Exception:  # noqa: BLE001
                 pass

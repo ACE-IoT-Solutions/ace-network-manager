@@ -191,12 +191,16 @@ class NetworkConfigManager:
 
         # Step 6: Check connectivity (unless skipped)
         if not skip_connectivity_check:
+            # Determine if the config uses DHCP on any interface
+            config_uses_dhcp = self._config_uses_dhcp(validation_result.config)
+
             connectivity_result = await self.connectivity_checker.check_connectivity(
                 check_gateway=True,
                 check_dns=True,
                 check_internet=False,  # Don't require internet
                 timeout=10,
                 dhcp_timeout=30,  # Give DHCP time to complete
+                config_uses_dhcp=config_uses_dhcp,
             )
 
             if not connectivity_result.success:
@@ -418,6 +422,44 @@ class NetworkConfigManager:
 
         # Start watching in background
         asyncio.create_task(self._timeout_watcher.watch(state_id))
+
+    @staticmethod
+    def _config_uses_dhcp(config) -> bool:  # noqa: ANN001
+        """Check if a netplan config uses DHCP on any interface.
+
+        Args:
+            config: NetplanConfig object
+
+        Returns:
+            True if any interface uses DHCP (dhcp4 or dhcp6)
+        """
+        if not config or not config.network:
+            return False
+
+        # Check ethernet interfaces
+        for iface in config.network.ethernets.values():
+            if iface.dhcp4 or iface.dhcp6:
+                return True
+
+        # Check VLAN interfaces
+        if config.network.vlans:
+            for vlan in config.network.vlans.values():
+                if vlan.dhcp4 or vlan.dhcp6:
+                    return True
+
+        # Check bond interfaces
+        if config.network.bonds:
+            for bond in config.network.bonds.values():
+                if bond.dhcp4 or bond.dhcp6:
+                    return True
+
+        # Check bridge interfaces
+        if config.network.bridges:
+            for bridge in config.network.bridges.values():
+                if bridge.dhcp4 or bridge.dhcp6:
+                    return True
+
+        return False
 
     @staticmethod
     def _calculate_hash(file_path: Path) -> str:
