@@ -1,8 +1,6 @@
 """Network connectivity validation."""
 
 import asyncio
-import socket
-import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
@@ -134,7 +132,10 @@ class ConnectivityChecker:
             return False
 
     async def _check_dns(self, timeout: int) -> bool:
-        """Check DNS resolution.
+        """Check DNS resolution using dig command.
+
+        Uses dig instead of Python's getaddrinfo to avoid issues with
+        systemd-resolved synchronization and DNS caching.
 
         Args:
             timeout: Timeout in seconds
@@ -143,13 +144,27 @@ class ConnectivityChecker:
             True if DNS works
         """
         try:
-            # Try to resolve a well-known domain
-            loop = asyncio.get_event_loop()
-            await asyncio.wait_for(
-                loop.getaddrinfo("google.com", 80, socket.AF_INET),
-                timeout=timeout,
+            # Use dig to resolve a well-known domain
+            # dig is more reliable than Python's getaddrinfo for checking fresh DNS
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    "dig", "+short", "+time=5", "+tries=2", "google.com", "A",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                ),
+                timeout=timeout + 2,
             )
-            return True
+            stdout, _ = await result.communicate()
+
+            # Check if we got a valid response (should have IP addresses)
+            if result.returncode == 0 and stdout:
+                # dig returns IP addresses, one per line
+                # Check if we got at least one valid-looking IP
+                output = stdout.decode().strip()
+                if output and any(line.strip() for line in output.splitlines()):
+                    return True
+
+            return False
         except Exception:  # noqa: BLE001
             return False
 
