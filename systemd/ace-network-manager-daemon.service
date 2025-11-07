@@ -1,0 +1,23 @@
+[Unit]
+Description=ACE Network Manager Daemon
+Documentation=https://github.com/ACE-IoT-Solutions/ace-network-manager
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ace-network-manager daemon
+Restart=always
+RestartSec=10
+User=root
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/ace-network-manager /etc/netplan
+
+[Install]
+WantedBy=multi-user.target

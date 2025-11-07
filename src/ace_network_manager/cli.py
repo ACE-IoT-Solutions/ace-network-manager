@@ -320,6 +320,33 @@ def validate(ctx: click.Context, config_file: str) -> None:  # noqa: ARG001
         raise click.Abort
 
 
+@cli.command()
+@click.option("--check-interval", default=5, help="Seconds between state checks (default: 5)")
+@click.pass_context
+def daemon(ctx: click.Context, check_interval: int) -> None:  # noqa: ARG001
+    """Run background daemon to monitor pending configurations.
+
+    The daemon continuously monitors for pending network configurations
+    and automatically rolls them back if they expire without confirmation.
+
+    This should typically be run as a systemd service.
+
+    Example:
+        ace-network-manager daemon
+    """
+    # Check for root
+    if os.geteuid() != 0:
+        click.secho("Error: This command must be run as root", fg="red", err=True)
+        raise click.Abort
+
+    from ace_network_manager.daemon.monitor import run_daemon
+
+    try:
+        asyncio.run(run_daemon(check_interval=check_interval))
+    except KeyboardInterrupt:
+        click.echo("\nDaemon stopped")
+
+
 @cli.command(hidden=True)
 @click.option("--state-id", required=True, help="State to check and restore if needed")
 @click.pass_context
