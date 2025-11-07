@@ -397,7 +397,6 @@ StandardError=journal
 PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectSystem=full
-ProtectHome=yes
 ReadWritePaths=/var/lib/ace-network-manager /etc/netplan
 
 [Install]
