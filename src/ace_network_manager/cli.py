@@ -369,25 +369,16 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
 
-    # Find the ace-network-manager executable path
+    # Use Python interpreter directly for systemd compatibility
+    # This works reliably even with virtual environments
     import sys
 
-    exec_path = sys.argv[0]
-    if not Path(exec_path).is_absolute():
-        # Try to find it in PATH or use current executable
-        import shutil as sh
-
-        found_path = sh.which("ace-network-manager")
-        if found_path:
-            exec_path = found_path
-        else:
-            # Use the Python executable path to construct the bin path
-            exec_path = str(Path(sys.executable).parent / "ace-network-manager")
-
-    click.echo(f"Using executable: {exec_path}")
+    python_path = sys.executable
+    click.echo(f"Using Python interpreter: {python_path}")
 
     # Embedded service file content
     # This ensures it's always available regardless of installation method
+    # Using -m flag to run as module is more reliable for systemd than wrapper scripts
     service_content = f"""[Unit]
 Description=ACE Network Manager Daemon
 Documentation=https://github.com/ACE-IoT-Solutions/ace-network-manager
@@ -395,7 +386,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={exec_path} daemon
+ExecStart={python_path} -m ace_network_manager.cli daemon
 Restart=always
 RestartSec=10
 User=root

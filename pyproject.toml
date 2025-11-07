@@ -1,6 +1,6 @@
 [project]
 name = "ace-network-manager"
-version = "0.2.2"
+version = "0.2.3"
 description = "Safe network configuration manager for edge deployments with automatic rollback"
 readme = "README.md"
 authors = [
