@@ -353,7 +353,7 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
     """Install and enable the background daemon as a systemd service.
 
     This command will:
-    1. Copy the systemd service file to /etc/systemd/system/
+    1. Create the systemd service file in /etc/systemd/system/
     2. Reload systemd configuration
     3. Enable the service to start on boot
     4. Start the service immediately
@@ -369,29 +369,58 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
 
-    # Find the service file in the package
-    import ace_network_manager
+    # Find the ace-network-manager executable path
+    import sys
 
-    package_dir = Path(ace_network_manager.__file__).parent.parent.parent
-    service_file = package_dir / "systemd" / "ace-network-manager-daemon.service"
+    exec_path = sys.argv[0]
+    if not Path(exec_path).is_absolute():
+        # Try to find it in PATH or use current executable
+        import shutil as sh
 
-    if not service_file.exists():
-        click.secho(
-            f"Error: Service file not found at {service_file}", fg="red", err=True
-        )
-        click.echo(
-            "\nPlease ensure ace-network-manager is installed correctly.", err=True
-        )
-        raise click.Abort
+        found_path = sh.which("ace-network-manager")
+        if found_path:
+            exec_path = found_path
+        else:
+            # Use the Python executable path to construct the bin path
+            exec_path = str(Path(sys.executable).parent / "ace-network-manager")
+
+    click.echo(f"Using executable: {exec_path}")
+
+    # Embedded service file content
+    # This ensures it's always available regardless of installation method
+    service_content = f"""[Unit]
+Description=ACE Network Manager Daemon
+Documentation=https://github.com/ACE-IoT-Solutions/ace-network-manager
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={exec_path} daemon
+Restart=always
+RestartSec=10
+User=root
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/ace-network-manager /etc/netplan
+
+[Install]
+WantedBy=multi-user.target
+"""
 
     systemd_dest = Path("/etc/systemd/system/ace-network-manager-daemon.service")
 
     try:
         click.echo("Installing daemon systemd service...")
 
-        # Copy service file
-        click.echo(f"→ Copying service file to {systemd_dest}")
-        shutil.copy2(service_file, systemd_dest)
+        # Write service file
+        click.echo(f"→ Writing service file to {systemd_dest}")
+        systemd_dest.write_text(service_content)
 
         # Reload systemd
         click.echo("→ Reloading systemd daemon")
