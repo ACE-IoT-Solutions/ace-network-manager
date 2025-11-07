@@ -370,10 +370,10 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
         raise click.Abort
 
     # Use Python interpreter directly for systemd compatibility
-    # This works reliably even with virtual environments
+    # Resolve symlinks to get the real interpreter, not venv wrapper
     import sys
 
-    python_path = sys.executable
+    python_path = Path(sys.executable).resolve()
     click.echo(f"Using Python interpreter: {python_path}")
 
     # Embedded service file content
