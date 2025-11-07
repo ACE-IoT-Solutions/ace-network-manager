@@ -74,7 +74,9 @@ class ConnectivityChecker:
         if check_dns:
             # Use longer timeout for DNS if we're using DHCP
             dns_timeout = 30 if config_uses_dhcp else timeout
+            print(f"[DEBUG] Running DNS check with timeout={dns_timeout}s, config_uses_dhcp={config_uses_dhcp}")
             dns_ok = await self._check_dns(dns_timeout)
+            print(f"[DEBUG] DNS check result: {dns_ok}")
             if not dns_ok:
                 # For DHCP configs, DNS failure is only a warning (gateway is more important)
                 if config_uses_dhcp:
@@ -145,16 +147,20 @@ class ConnectivityChecker:
         Falls back through multiple tools to handle different system configurations.
 
         Args:
-            timeout: Timeout in seconds
+            timeout: Timeout in seconds (each tool gets this full timeout)
 
         Returns:
             True if DNS works
         """
+        # Calculate per-tool timeout (give each tool the full timeout)
+        tool_timeout = max(timeout, 10)  # At least 10s per tool
+
         # Try multiple DNS query tools in order of preference
+        # Use dynamic timeout values based on the passed timeout parameter
         dns_tools = [
-            (["dig", "+short", "+time=5", "+tries=2", "google.com", "A"], "dig"),
-            (["host", "-W", "5", "google.com"], "host"),
-            (["nslookup", "-timeout=5", "google.com"], "nslookup"),
+            (["dig", "+short", f"+time={tool_timeout}", "+tries=1", "google.com", "A"], "dig"),
+            (["host", "-W", str(tool_timeout), "google.com"], "host"),
+            (["nslookup", f"-timeout={tool_timeout}", "google.com"], "nslookup"),
         ]
 
         for cmd, tool_name in dns_tools:
@@ -165,7 +171,7 @@ class ConnectivityChecker:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     ),
-                    timeout=timeout,
+                    timeout=tool_timeout + 5,  # Extra buffer for process overhead
                 )
                 stdout, stderr = await result.communicate()
 
