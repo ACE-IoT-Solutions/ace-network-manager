@@ -347,6 +347,152 @@ def daemon(ctx: click.Context, check_interval: int) -> None:  # noqa: ARG001
         click.echo("\nDaemon stopped")
 
 
+@cli.command()
+@click.pass_context
+def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
+    """Install and enable the background daemon as a systemd service.
+
+    This command will:
+    1. Copy the systemd service file to /etc/systemd/system/
+    2. Reload systemd configuration
+    3. Enable the service to start on boot
+    4. Start the service immediately
+
+    Example:
+        sudo ace-network-manager install-daemon
+    """
+    import shutil
+    import subprocess
+
+    # Check for root
+    if os.geteuid() != 0:
+        click.secho("Error: This command must be run as root", fg="red", err=True)
+        raise click.Abort
+
+    # Find the service file in the package
+    import ace_network_manager
+
+    package_dir = Path(ace_network_manager.__file__).parent.parent.parent
+    service_file = package_dir / "systemd" / "ace-network-manager-daemon.service"
+
+    if not service_file.exists():
+        click.secho(
+            f"Error: Service file not found at {service_file}", fg="red", err=True
+        )
+        click.echo(
+            "\nPlease ensure ace-network-manager is installed correctly.", err=True
+        )
+        raise click.Abort
+
+    systemd_dest = Path("/etc/systemd/system/ace-network-manager-daemon.service")
+
+    try:
+        click.echo("Installing daemon systemd service...")
+
+        # Copy service file
+        click.echo(f"→ Copying service file to {systemd_dest}")
+        shutil.copy2(service_file, systemd_dest)
+
+        # Reload systemd
+        click.echo("→ Reloading systemd daemon")
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+
+        # Enable service
+        click.echo("→ Enabling service to start on boot")
+        subprocess.run(["systemctl", "enable", "ace-network-manager-daemon"], check=True)
+
+        # Start service
+        click.echo("→ Starting service")
+        subprocess.run(["systemctl", "start", "ace-network-manager-daemon"], check=True)
+
+        # Check status
+        click.echo("\n" + "=" * 70)
+        click.secho("✓ Daemon installed and started successfully!", fg="green", bold=True)
+        click.echo("=" * 70)
+
+        # Show status
+        click.echo("\nService status:")
+        subprocess.run(["systemctl", "status", "ace-network-manager-daemon", "--no-pager"])
+
+        click.echo("\n" + "=" * 70)
+        click.echo("The daemon will now automatically monitor pending configurations")
+        click.echo("and trigger rollbacks when they expire.")
+        click.echo("\nUseful commands:")
+        click.echo("  View logs:    sudo journalctl -u ace-network-manager-daemon -f")
+        click.echo("  Stop daemon:  sudo systemctl stop ace-network-manager-daemon")
+        click.echo("  Restart:      sudo systemctl restart ace-network-manager-daemon")
+        click.echo("  Uninstall:    sudo ace-network-manager uninstall-daemon")
+        click.echo("=" * 70)
+
+    except subprocess.CalledProcessError as e:
+        click.secho(f"\nError: Failed to install daemon: {e}", fg="red", err=True)
+        raise click.Abort from e
+    except Exception as e:
+        click.secho(f"\nError: {e}", fg="red", err=True)
+        raise click.Abort from e
+
+
+@cli.command()
+@click.pass_context
+def uninstall_daemon(ctx: click.Context) -> None:  # noqa: ARG001
+    """Uninstall the background daemon systemd service.
+
+    This command will:
+    1. Stop the daemon service
+    2. Disable the service from starting on boot
+    3. Remove the systemd service file
+    4. Reload systemd configuration
+
+    Example:
+        sudo ace-network-manager uninstall-daemon
+    """
+    import subprocess
+
+    # Check for root
+    if os.geteuid() != 0:
+        click.secho("Error: This command must be run as root", fg="red", err=True)
+        raise click.Abort
+
+    systemd_file = Path("/etc/systemd/system/ace-network-manager-daemon.service")
+
+    if not systemd_file.exists():
+        click.secho("Daemon is not installed", fg="yellow")
+        return
+
+    try:
+        click.echo("Uninstalling daemon systemd service...")
+
+        # Stop service
+        click.echo("→ Stopping service")
+        subprocess.run(["systemctl", "stop", "ace-network-manager-daemon"], check=False)
+
+        # Disable service
+        click.echo("→ Disabling service")
+        subprocess.run(
+            ["systemctl", "disable", "ace-network-manager-daemon"], check=False
+        )
+
+        # Remove service file
+        click.echo(f"→ Removing service file from {systemd_file}")
+        systemd_file.unlink()
+
+        # Reload systemd
+        click.echo("→ Reloading systemd daemon")
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+
+        click.echo("\n" + "=" * 70)
+        click.secho("✓ Daemon uninstalled successfully!", fg="green", bold=True)
+        click.echo("=" * 70)
+        click.echo("\nAutomatic rollback monitoring has been disabled.")
+        click.echo("You can reinstall it anytime with:")
+        click.echo("  sudo ace-network-manager install-daemon")
+        click.echo("=" * 70)
+
+    except Exception as e:
+        click.secho(f"\nError: Failed to uninstall daemon: {e}", fg="red", err=True)
+        raise click.Abort from e
+
+
 @cli.command(hidden=True)
 @click.option("--state-id", required=True, help="State to check and restore if needed")
 @click.pass_context
