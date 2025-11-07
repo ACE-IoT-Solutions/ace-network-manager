@@ -76,7 +76,14 @@ class ConnectivityChecker:
             dns_timeout = 30 if config_uses_dhcp else timeout
             dns_ok = await self._check_dns(dns_timeout)
             if not dns_ok:
-                failures.append(f"DNS resolution failed after {dns_timeout}s timeout")
+                # For DHCP configs, DNS failure is only a warning (gateway is more important)
+                if config_uses_dhcp:
+                    warnings.append(
+                        f"DNS resolution check failed after {dns_timeout}s timeout "
+                        "(DHCP config - DNS may take longer to propagate)"
+                    )
+                else:
+                    failures.append(f"DNS resolution failed after {dns_timeout}s timeout")
 
         # Stage 6: Check default gateway (with longer timeout for DHCP)
         if check_gateway:
@@ -132,10 +139,10 @@ class ConnectivityChecker:
             return False
 
     async def _check_dns(self, timeout: int) -> bool:
-        """Check DNS resolution using dig command.
+        """Check DNS resolution using multiple methods.
 
-        Uses dig instead of Python's getaddrinfo to avoid issues with
-        systemd-resolved synchronization and DNS caching.
+        Tries dig, host, and nslookup commands in order to check DNS.
+        Falls back through multiple tools to handle different system configurations.
 
         Args:
             timeout: Timeout in seconds
@@ -143,30 +150,56 @@ class ConnectivityChecker:
         Returns:
             True if DNS works
         """
-        try:
-            # Use dig to resolve a well-known domain
-            # dig is more reliable than Python's getaddrinfo for checking fresh DNS
-            result = await asyncio.wait_for(
-                asyncio.create_subprocess_exec(
-                    "dig", "+short", "+time=5", "+tries=2", "google.com", "A",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                ),
-                timeout=timeout + 2,
-            )
-            stdout, _ = await result.communicate()
+        # Try multiple DNS query tools in order of preference
+        dns_tools = [
+            (["dig", "+short", "+time=5", "+tries=2", "google.com", "A"], "dig"),
+            (["host", "-W", "5", "google.com"], "host"),
+            (["nslookup", "-timeout=5", "google.com"], "nslookup"),
+        ]
 
-            # Check if we got a valid response (should have IP addresses)
-            if result.returncode == 0 and stdout:
-                # dig returns IP addresses, one per line
-                # Check if we got at least one valid-looking IP
-                output = stdout.decode().strip()
-                if output and any(line.strip() for line in output.splitlines()):
-                    return True
+        for cmd, tool_name in dns_tools:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    ),
+                    timeout=timeout,
+                )
+                stdout, stderr = await result.communicate()
 
-            return False
-        except Exception:  # noqa: BLE001
-            return False
+                # Check if we got a successful response
+                if result.returncode == 0:
+                    output = stdout.decode().strip()
+                    # Verify we got some output that looks like a successful resolution
+                    if output and len(output) > 0:
+                        # For dig: should have IP addresses
+                        # For host: should have "has address" or similar
+                        # For nslookup: should have "Address:" lines
+                        if tool_name == "dig" and any(
+                            line.strip() for line in output.splitlines()
+                        ):
+                            return True
+                        elif tool_name == "host" and (
+                            "has address" in output or "has IPv6" in output
+                        ):
+                            return True
+                        elif tool_name == "nslookup" and "Address:" in output:
+                            return True
+
+            except FileNotFoundError:
+                # Tool not installed, try next one
+                continue
+            except asyncio.TimeoutError:
+                # This tool timed out, try next one
+                continue
+            except Exception:  # noqa: BLE001
+                # Other error, try next tool
+                continue
+
+        # All tools failed
+        return False
 
     async def _check_internet(self, timeout: int) -> bool:
         """Check internet connectivity by pinging 8.8.8.8.
