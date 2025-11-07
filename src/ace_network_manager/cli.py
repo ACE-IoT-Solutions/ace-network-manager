@@ -369,16 +369,17 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
 
-    # Use Python interpreter directly for systemd compatibility
-    # Resolve symlinks to get the real interpreter, not venv wrapper
+    # Use Python from venv with proper environment setup
     import sys
 
-    python_path = Path(sys.executable).resolve()
+    python_path = sys.executable  # Don't resolve - keep venv Python
+    venv_path = Path(sys.executable).parent.parent  # Get venv root from bin/python
+
     click.echo(f"Using Python interpreter: {python_path}")
+    click.echo(f"Virtual environment: {venv_path}")
 
     # Embedded service file content
-    # This ensures it's always available regardless of installation method
-    # Using -m flag to run as module is more reliable for systemd than wrapper scripts
+    # Set up environment for venv to work properly with systemd
     service_content = f"""[Unit]
 Description=ACE Network Manager Daemon
 Documentation=https://github.com/ACE-IoT-Solutions/ace-network-manager
@@ -392,6 +393,10 @@ RestartSec=10
 User=root
 StandardOutput=journal
 StandardError=journal
+
+# Virtual environment setup
+Environment="VIRTUAL_ENV={venv_path}"
+Environment="PATH={venv_path}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Security settings
 PrivateTmp=yes
