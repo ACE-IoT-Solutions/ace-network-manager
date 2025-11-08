@@ -334,10 +334,19 @@ def daemon(ctx: click.Context, check_interval: int) -> None:  # noqa: ARG001
     Example:
         ace-network-manager daemon
     """
+    import logging
+
     # Check for root
     if os.geteuid() != 0:
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
+
+    # Configure logging for daemon (will be captured by systemd journal)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
     from ace_network_manager.daemon.monitor import run_daemon
 

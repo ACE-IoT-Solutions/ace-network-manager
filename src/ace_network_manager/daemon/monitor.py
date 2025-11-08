@@ -1,6 +1,7 @@
 """Background monitoring daemon for pending configurations."""
 
 import asyncio
+import logging
 import signal
 import sys
 from pathlib import Path
@@ -9,6 +10,9 @@ from ace_network_manager.core.constants import DEFAULT_STATE_DIR
 from ace_network_manager.core.manager import NetworkConfigManager
 from ace_network_manager.state.models import StateStatus
 from ace_network_manager.state.tracker import StateTracker
+
+# Set up logging for daemon
+logger = logging.getLogger(__name__)
 
 
 class ConfigMonitorDaemon:
@@ -49,9 +53,9 @@ class ConfigMonitorDaemon:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, lambda: asyncio.create_task(self.shutdown()))
 
-        print("ACE Network Manager daemon started")
-        print(f"Monitoring state directory: {self.state_tracker.state_dir}")
-        print(f"Check interval: {self.check_interval}s")
+        logger.info("ACE Network Manager daemon started")
+        logger.info(f"Monitoring state directory: {self.state_tracker.state_dir}")
+        logger.info(f"Check interval: {self.check_interval}s")
 
         try:
             while self._running:
@@ -66,9 +70,9 @@ class ConfigMonitorDaemon:
                 for state in pending_states:
                     if state.state_id not in self._monitored_states:
                         # Start monitoring this state
-                        print(f"Found pending state: {state.state_id}")
-                        print(f"  Timeout at: {state.timeout_at}")
-                        print(f"  Time remaining: {state.time_remaining()}")
+                        logger.info(f"Found pending state: {state.state_id}")
+                        logger.info(f"  Timeout at: {state.timeout_at}")
+                        logger.info(f"  Time remaining: {state.time_remaining()}")
                         task = asyncio.create_task(self._monitor_state(state.state_id))
                         self._monitored_states[state.state_id] = task
 
@@ -85,7 +89,7 @@ class ConfigMonitorDaemon:
                 await asyncio.sleep(self.check_interval)
 
         except asyncio.CancelledError:
-            print("Daemon shutting down...")
+            logger.info("Daemon shutting down...")
         finally:
             # Cancel all monitoring tasks
             for task in self._monitored_states.values():
@@ -105,34 +109,34 @@ class ConfigMonitorDaemon:
 
                 if not state:
                     # State was removed (confirmed or rolled back)
-                    print(f"State {state_id} no longer exists (confirmed or rolled back)")
+                    logger.info(f"State {state_id} no longer exists (confirmed or rolled back)")
                     break
 
                 if state.status != StateStatus.PENDING:
                     # State was confirmed or rolled back
-                    print(f"State {state_id} status changed to {state.status}")
+                    logger.info(f"State {state_id} status changed to {state.status}")
                     break
 
                 if state.is_expired():
                     # Timeout expired - trigger rollback
-                    print(f"State {state_id} expired! Triggering automatic rollback...")
+                    logger.warning(f"State {state_id} expired! Triggering automatic rollback...")
                     try:
                         await self.manager._perform_rollback(state_id, "timeout_expired")
-                        print(f"Automatic rollback completed for {state_id}")
+                        logger.info(f"Automatic rollback completed for {state_id}")
                     except Exception as e:
-                        print(f"ERROR: Rollback failed for {state_id}: {e}")
+                        logger.error(f"Rollback failed for {state_id}: {e}")
                     break
 
                 # Calculate sleep time (check more frequently as we approach timeout)
                 time_remaining = state.time_remaining()
                 if time_remaining.total_seconds() <= 0:
                     # Just expired
-                    print(f"State {state_id} just expired! Triggering rollback...")
+                    logger.warning(f"State {state_id} just expired! Triggering rollback...")
                     try:
                         await self.manager._perform_rollback(state_id, "timeout_expired")
-                        print(f"Automatic rollback completed for {state_id}")
+                        logger.info(f"Automatic rollback completed for {state_id}")
                     except Exception as e:
-                        print(f"ERROR: Rollback failed for {state_id}: {e}")
+                        logger.error(f"Rollback failed for {state_id}: {e}")
                     break
 
                 # Sleep for a bit, but not more than the check interval
@@ -140,13 +144,13 @@ class ConfigMonitorDaemon:
                 await asyncio.sleep(sleep_time)
 
         except asyncio.CancelledError:
-            print(f"Monitoring cancelled for state {state_id}")
+            logger.info(f"Monitoring cancelled for state {state_id}")
         except Exception as e:
-            print(f"ERROR monitoring state {state_id}: {e}")
+            logger.error(f"Error monitoring state {state_id}: {e}")
 
     async def shutdown(self) -> None:
         """Gracefully shutdown the daemon."""
-        print("\nShutdown signal received")
+        logger.info("Shutdown signal received")
         self._running = False
 
     @staticmethod

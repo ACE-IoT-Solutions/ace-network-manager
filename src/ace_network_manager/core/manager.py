@@ -194,9 +194,6 @@ class NetworkConfigManager:
             # Determine if the config uses DHCP on any interface
             config_uses_dhcp = self._config_uses_dhcp(validation_result.config)
 
-            # Debug: Show DHCP detection result
-            print(f"\n[DEBUG] DHCP detected in config: {config_uses_dhcp}")
-
             connectivity_result = await self.connectivity_checker.check_connectivity(
                 check_gateway=True,
                 check_dns=True,

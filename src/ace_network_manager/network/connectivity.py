@@ -74,9 +74,7 @@ class ConnectivityChecker:
         if check_dns:
             # Use longer timeout for DNS if we're using DHCP
             dns_timeout = 30 if config_uses_dhcp else timeout
-            print(f"[DEBUG] Running DNS check with timeout={dns_timeout}s, config_uses_dhcp={config_uses_dhcp}")
             dns_ok = await self._check_dns(dns_timeout)
-            print(f"[DEBUG] DNS check result: {dns_ok}")
             if not dns_ok:
                 # For DHCP configs, DNS failure is only a warning (gateway is more important)
                 if config_uses_dhcp:
