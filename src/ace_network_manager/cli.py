@@ -136,8 +136,6 @@ def apply(
 
         if network.vlans:
             click.echo(f"  • VLANs: {len(network.vlans)}")
-        if network.bonds:
-            click.echo(f"  • Bonds: {len(network.bonds)}")
         if network.bridges:
             click.echo(f"  • Bridges: {len(network.bridges)}")
 
