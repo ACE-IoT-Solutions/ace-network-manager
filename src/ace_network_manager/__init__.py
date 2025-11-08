@@ -1,3 +1,3 @@
 """ACE Network Manager - Safe network configuration with automatic rollback."""
 
-__version__ = "0.2.7"
+__version__ = "0.3.0"

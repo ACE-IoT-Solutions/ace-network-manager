@@ -33,12 +33,14 @@ def cli(ctx: click.Context, debug: bool) -> None:
 @click.option(
     "--skip-connectivity-check", is_flag=True, help="Skip network validation (dangerous!)"
 )
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def apply(
     ctx: click.Context,  # noqa: ARG001
     config_file: str,
     timeout: int,
     skip_connectivity_check: bool,
+    yes: bool,
 ) -> None:
     """Apply a new network configuration with rollback protection.
 
@@ -49,10 +51,121 @@ def apply(
     Example:
         ace-network-manager apply /etc/netplan/00-new-config.yaml --timeout 600
     """
+    import subprocess
+
+    from ace_network_manager.daemon.monitor import ConfigMonitorDaemon
+    from ace_network_manager.network.validator import NetplanValidator
+
     # Check for root
     if os.geteuid() != 0:
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
+
+    # Step 1: Check if daemon is running
+    click.echo("=" * 70)
+    click.secho("DAEMON HEALTH CHECK", fg="cyan", bold=True)
+    click.echo("=" * 70)
+
+    daemon_running = ConfigMonitorDaemon.check_if_running()
+    if daemon_running:
+        click.secho("✓ Daemon is running", fg="green")
+
+        # Check systemd service status
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", "ace-network-manager-daemon"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                click.secho("✓ Systemd service is active", fg="green")
+            else:
+                click.secho("⚠ Systemd service not active", fg="yellow")
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        click.secho("✗ Daemon is NOT running!", fg="red", bold=True)
+        click.echo("\nAutomatic rollback will NOT work without the daemon!")
+        click.echo("Install and start the daemon:")
+        click.echo("  sudo ace-network-manager install-daemon")
+        if not yes and not click.confirm("\nDo you want to continue anyway?", default=False):
+            raise click.Abort
+
+    # Step 2: Validate configuration
+    click.echo("\n" + "=" * 70)
+    click.secho("CONFIGURATION VALIDATION", fg="cyan", bold=True)
+    click.echo("=" * 70)
+
+    validation_result = NetplanValidator.validate_file(config_file)
+
+    if not validation_result.valid:
+        click.secho("✗ Configuration is INVALID", fg="red", bold=True)
+        click.echo("\nErrors:")
+        for error in validation_result.errors:
+            click.secho(f"  • {error}", fg="red")
+        raise click.Abort
+
+    click.secho("✓ Configuration is valid", fg="green")
+
+    # Show warnings if any
+    if validation_result.warnings:
+        click.echo("\nWarnings:")
+        for warning in validation_result.warnings:
+            click.secho(f"  ⚠ {warning}", fg="yellow")
+
+    # Show configuration summary
+    if validation_result.config and validation_result.config.network:
+        click.echo("\nConfiguration summary:")
+        network = validation_result.config.network
+
+        if network.ethernets:
+            click.echo(f"  • Ethernet interfaces: {len(network.ethernets)}")
+            for name, iface in network.ethernets.items():
+                dhcp = []
+                if iface.dhcp4:
+                    dhcp.append("DHCPv4")
+                if iface.dhcp6:
+                    dhcp.append("DHCPv6")
+                dhcp_str = f" ({', '.join(dhcp)})" if dhcp else ""
+                static_ips = len(iface.addresses) if iface.addresses else 0
+                if static_ips:
+                    click.echo(f"    - {name}: {static_ips} static IP(s){dhcp_str}")
+                else:
+                    click.echo(f"    - {name}:{dhcp_str}")
+
+        if network.vlans:
+            click.echo(f"  • VLANs: {len(network.vlans)}")
+        if network.bonds:
+            click.echo(f"  • Bonds: {len(network.bonds)}")
+        if network.bridges:
+            click.echo(f"  • Bridges: {len(network.bridges)}")
+
+    # Step 3: Request confirmation
+    if not yes:
+        click.echo("\n" + "=" * 70)
+        click.secho("CONFIRMATION REQUIRED", fg="yellow", bold=True)
+        click.echo("=" * 70)
+        click.echo(f"\nConfig file: {config_file}")
+        click.echo(f"Timeout: {timeout} seconds ({timeout // 60} minutes)")
+        if skip_connectivity_check:
+            click.secho("\n⚠ WARNING: Connectivity check will be SKIPPED!", fg="yellow", bold=True)
+
+        click.echo("\nThis will:")
+        click.echo("  1. Backup current network configuration")
+        click.echo("  2. Apply the new configuration")
+        click.echo("  3. Verify network connectivity")
+        click.echo(f"  4. Wait {timeout}s for your confirmation")
+        click.echo("  5. Auto-rollback if not confirmed")
+
+        if not click.confirm("\nProceed with applying this configuration?", default=False):
+            click.echo("Aborted.")
+            raise click.Abort
+
+    # Step 4: Apply configuration
+    click.echo("\n" + "=" * 70)
+    click.secho("APPLYING CONFIGURATION", fg="cyan", bold=True)
+    click.echo("=" * 70)
 
     manager = NetworkConfigManager()
 
