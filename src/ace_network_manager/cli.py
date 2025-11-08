@@ -61,7 +61,35 @@ def apply(
         click.secho("Error: This command must be run as root", fg="red", err=True)
         raise click.Abort
 
-    # Step 1: Check if daemon is running
+    # Step 1: Check for existing pending state
+    manager = NetworkConfigManager()
+    status_info = manager.get_status()
+
+    if status_info["current_state"] == "pending":
+        click.echo("=" * 70)
+        click.secho("PENDING CONFIGURATION EXISTS", fg="red", bold=True)
+        click.echo("=" * 70)
+        click.echo(f"\nState ID: {status_info['state_id']}")
+        click.echo(f"Config: {status_info['config_path']}")
+        click.echo(f"Pending since: {status_info['pending_since']}")
+        click.echo(f"Timeout at: {status_info['timeout_at']}")
+
+        remaining = status_info['time_remaining_seconds']
+        minutes = remaining // 60
+        seconds = remaining % 60
+        click.secho(
+            f"\nTime remaining: {minutes}m {seconds}s",
+            fg="yellow" if remaining > 60 else "red",
+            bold=True,
+        )
+
+        click.echo("\nYou must resolve the pending configuration before applying a new one:")
+        click.echo("  • Confirm the current change:  ace-network-manager confirm")
+        click.echo("  • Roll back the current change: ace-network-manager rollback")
+        click.echo("  • Wait for automatic rollback")
+        raise click.Abort
+
+    # Step 2: Check if daemon is running
     click.echo("=" * 70)
     click.secho("DAEMON HEALTH CHECK", fg="cyan", bold=True)
     click.echo("=" * 70)
@@ -92,7 +120,7 @@ def apply(
         if not yes and not click.confirm("\nDo you want to continue anyway?", default=False):
             raise click.Abort
 
-    # Step 2: Validate configuration
+    # Step 3: Validate configuration
     click.echo("\n" + "=" * 70)
     click.secho("CONFIGURATION VALIDATION", fg="cyan", bold=True)
     click.echo("=" * 70)
@@ -139,7 +167,7 @@ def apply(
         if network.bridges:
             click.echo(f"  • Bridges: {len(network.bridges)}")
 
-    # Step 3: Request confirmation
+    # Step 4: Request confirmation
     if not yes:
         click.echo("\n" + "=" * 70)
         click.secho("CONFIRMATION REQUIRED", fg="yellow", bold=True)
@@ -160,12 +188,10 @@ def apply(
             click.echo("Aborted.")
             raise click.Abort
 
-    # Step 4: Apply configuration
+    # Step 5: Apply configuration
     click.echo("\n" + "=" * 70)
     click.secho("APPLYING CONFIGURATION", fg="cyan", bold=True)
     click.echo("=" * 70)
-
-    manager = NetworkConfigManager()
 
     async def _apply() -> None:
         result = await manager.apply_config(
