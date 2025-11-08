@@ -57,6 +57,17 @@ class ConfigMonitorDaemon:
         logger.info(f"Monitoring state directory: {self.state_tracker.state_dir}")
         logger.info(f"Check interval: {self.check_interval}s")
 
+        # Clean up any stale systemd restoration services
+        try:
+            from ace_network_manager.systemd.integration import SystemdIntegration
+
+            systemd = SystemdIntegration()
+            cleaned = systemd.cleanup_stale_services()
+            if cleaned:
+                logger.info(f"Cleaned up {len(cleaned)} stale restoration service(s)")
+        except Exception as e:
+            logger.warning(f"Failed to clean up stale services: {e}")
+
         try:
             while self._running:
                 # Find all pending states

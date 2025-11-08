@@ -177,3 +177,72 @@ class SystemdIntegration:
             return result.returncode == 0
         except Exception:  # noqa: BLE001
             return False
+
+    def cleanup_stale_services(self) -> list[str]:
+        """Clean up all restoration services that don't have active states.
+
+        This removes services for state IDs that no longer exist as pending
+        or that have already been confirmed/rolled back.
+
+        Returns:
+            List of state IDs that were cleaned up
+        """
+        from ace_network_manager.state.tracker import StateTracker
+
+        tracker = StateTracker()
+        cleaned = []
+
+        # Find all restore service files
+        pattern = f"{SYSTEMD_SERVICE_PREFIX}-*.service"
+        for service_file in self.systemd_dir.glob(pattern):
+            # Extract state_id from filename
+            # Format: ace-network-manager-restore-<uuid>.service
+            filename = service_file.name
+            if not filename.startswith(f"{SYSTEMD_SERVICE_PREFIX}-"):
+                continue
+
+            state_id = filename[len(f"{SYSTEMD_SERVICE_PREFIX}-"):-len(".service")]
+
+            # Check if state exists and is still pending
+            state = tracker.get_state(state_id)
+            should_remove = False
+
+            if not state:
+                # State doesn't exist at all - remove service
+                should_remove = True
+            else:
+                # State exists but is not pending - remove service
+                from ace_network_manager.state.models import StateStatus
+
+                if state.status != StateStatus.PENDING:
+                    should_remove = True
+
+            if should_remove:
+                try:
+                    # Disable and remove
+                    service_name = f"{SYSTEMD_SERVICE_PREFIX}-{state_id}.service"
+                    subprocess.run(
+                        ["systemctl", "disable", service_name],
+                        capture_output=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    service_file.unlink()
+                    cleaned.append(state_id)
+                except Exception:  # noqa: BLE001
+                    # Best effort - continue cleaning others
+                    pass
+
+        # Reload systemd if we cleaned anything
+        if cleaned:
+            try:
+                subprocess.run(
+                    ["systemctl", "daemon-reload"],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        return cleaned

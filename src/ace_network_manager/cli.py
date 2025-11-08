@@ -663,6 +663,46 @@ def uninstall_daemon(ctx: click.Context) -> None:  # noqa: ARG001
         raise click.Abort from e
 
 
+@cli.command()
+@click.pass_context
+def cleanup_services(ctx: click.Context) -> None:  # noqa: ARG001
+    """Clean up stale systemd restoration services.
+
+    Removes systemd services for configurations that are no longer pending.
+    This is automatically done when the daemon starts, but can be run manually.
+
+    Example:
+        sudo ace-network-manager cleanup-services
+    """
+    from ace_network_manager.systemd.integration import SystemdIntegration
+
+    # Check for root
+    if os.geteuid() != 0:
+        click.secho("Error: This command must be run as root", fg="red", err=True)
+        raise click.Abort
+
+    systemd = SystemdIntegration()
+
+    try:
+        click.echo("Cleaning up stale restoration services...")
+        cleaned = systemd.cleanup_stale_services()
+
+        if cleaned:
+            click.secho(
+                f"\n✓ Cleaned up {len(cleaned)} stale service(s)", fg="green", bold=True
+            )
+            if len(cleaned) <= 10:  # Only show details if not too many
+                click.echo("\nRemoved services for states:")
+                for state_id in cleaned:
+                    click.echo(f"  • {state_id}")
+        else:
+            click.secho("✓ No stale services found", fg="green")
+
+    except Exception as e:
+        click.secho(f"\nError: Failed to cleanup services: {e}", fg="red", err=True)
+        raise click.Abort from e
+
+
 @cli.command(hidden=True)
 @click.option("--state-id", required=True, help="State to check and restore if needed")
 @click.pass_context
