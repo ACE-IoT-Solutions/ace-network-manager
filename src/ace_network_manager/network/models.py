@@ -11,7 +11,7 @@ from pydantic import (
     model_validator,
 )
 
-from ace_network_manager.core.exceptions import DuplicateAddressError, SubnetOverlapError
+from ace_network_manager.core.exceptions import SubnetOverlapError
 
 
 class NetplanNameservers(BaseModel):

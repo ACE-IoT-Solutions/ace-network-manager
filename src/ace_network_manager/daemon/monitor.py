@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import signal
-import sys
 from pathlib import Path
 
 from ace_network_manager.core.constants import DEFAULT_STATE_DIR
@@ -89,9 +88,7 @@ class ConfigMonitorDaemon:
 
                 # Clean up completed tasks
                 completed = [
-                    state_id
-                    for state_id, task in self._monitored_states.items()
-                    if task.done()
+                    state_id for state_id, task in self._monitored_states.items() if task.done()
                 ]
                 for state_id in completed:
                     self._monitored_states.pop(state_id)
@@ -186,7 +183,7 @@ class ConfigMonitorDaemon:
             except OSError:
                 # Process doesn't exist
                 return False
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     @staticmethod
@@ -212,7 +209,7 @@ class ConfigMonitorDaemon:
             if pid_file.exists():
                 try:
                     pid_file.unlink()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
 

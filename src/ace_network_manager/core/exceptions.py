@@ -77,8 +77,7 @@ class DuplicateAddressError(ValidationError):
 
         if message is None:
             message = (
-                f"Duplicate address on interface '{interface}': "
-                f"{address} is defined multiple times"
+                f"Duplicate address on interface '{interface}': {address} is defined multiple times"
             )
 
         super().__init__(message)

@@ -56,9 +56,7 @@ class ConnectivityChecker:
             # Stage 2: Wait for DHCP to obtain leases
             dhcp_ok = await self._wait_for_dhcp_lease_any(dhcp_timeout)
             if not dhcp_ok:
-                failures.append(
-                    f"DHCP failed to obtain lease within {dhcp_timeout}s timeout"
-                )
+                failures.append(f"DHCP failed to obtain lease within {dhcp_timeout}s timeout")
                 # Don't continue - no point checking DNS if we don't have network config
                 return ConnectivityResult(success=False, failures=failures, warnings=warnings)
 
@@ -68,7 +66,9 @@ class ConnectivityChecker:
             # Stage 4: Verify we got DNS servers
             dns_servers = await self._get_configured_dns_servers()
             if not dns_servers:
-                warnings.append("No DNS servers found in /etc/resolv.conf (DHCP may not have provided DNS)")
+                warnings.append(
+                    "No DNS servers found in /etc/resolv.conf (DHCP may not have provided DNS)"
+                )
 
         # Stage 5: Check DNS resolution (with longer timeout for DHCP scenarios)
         if check_dns:
@@ -114,7 +114,10 @@ class ConnectivityChecker:
             # Get default gateway
             result = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
-                    "ip", "route", "show", "default",
+                    "ip",
+                    "route",
+                    "show",
+                    "default",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 ),
@@ -135,7 +138,7 @@ class ConnectivityChecker:
             # Ping gateway
             return await self._ping(gateway_ip, timeout)
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     async def _check_dns(self, timeout: int) -> bool:
@@ -181,15 +184,14 @@ class ConnectivityChecker:
                         # For dig: should have IP addresses
                         # For host: should have "has address" or similar
                         # For nslookup: should have "Address:" lines
-                        if tool_name == "dig" and any(
-                            line.strip() for line in output.splitlines()
+                        if (
+                            tool_name == "dig" and any(line.strip() for line in output.splitlines())
+                        ) or (
+                            tool_name == "host"
+                            and ("has address" in output or "has IPv6" in output)
                         ):
                             return True
-                        elif tool_name == "host" and (
-                            "has address" in output or "has IPv6" in output
-                        ):
-                            return True
-                        elif tool_name == "nslookup" and "Address:" in output:
+                        if tool_name == "nslookup" and "Address:" in output:
                             return True
 
             except FileNotFoundError:
@@ -198,7 +200,7 @@ class ConnectivityChecker:
             except asyncio.TimeoutError:
                 # This tool timed out, try next one
                 continue
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Other error, try next tool
                 continue
 
@@ -229,7 +231,12 @@ class ConnectivityChecker:
         try:
             result = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
-                    "ping", "-c", "1", "-W", str(timeout), host,
+                    "ping",
+                    "-c",
+                    "1",
+                    "-W",
+                    str(timeout),
+                    host,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 ),
@@ -237,7 +244,7 @@ class ConnectivityChecker:
             )
             await result.wait()
             return result.returncode == 0
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     async def _wait_for_dhcp_lease_any(self, timeout: int) -> bool:
@@ -261,7 +268,10 @@ class ConnectivityChecker:
 
             try:
                 result = await asyncio.create_subprocess_exec(
-                    "ip", "-j", "addr", "show",
+                    "ip",
+                    "-j",
+                    "addr",
+                    "show",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -285,7 +295,7 @@ class ConnectivityChecker:
                                 if not addr.startswith("169.254.") and not addr.startswith("127."):
                                     return True
 
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
             # Wait a bit before checking again
@@ -311,7 +321,7 @@ class ConnectivityChecker:
                         parts = line.split()
                         if len(parts) >= 2:
                             dns_servers.append(parts[1])
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
         return dns_servers

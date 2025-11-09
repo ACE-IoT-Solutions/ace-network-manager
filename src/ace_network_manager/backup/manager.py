@@ -139,7 +139,7 @@ class BackupManager:
             )
             if result.returncode == 0:
                 system_info["netplan_version"] = result.stdout.strip()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
         # Create metadata
@@ -172,7 +172,7 @@ class BackupManager:
         latest_link = self.backup_dir / LATEST_BACKUP_LINK
         try:
             create_symlink(backup_path, latest_link, force=True)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Non-critical error, continue
             pass
 
@@ -298,7 +298,7 @@ class BackupManager:
             try:
                 metadata = BackupMetadata.from_dict(metadata_data)
                 backups.append((backup_dir, metadata))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Skip invalid backups
                 continue
 
@@ -336,7 +336,7 @@ class BackupManager:
 
             return True
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def cleanup_old_backups(
@@ -379,7 +379,7 @@ class BackupManager:
             try:
                 shutil.rmtree(backup_path)
                 removed += 1
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Continue even if deletion fails
                 pass
 

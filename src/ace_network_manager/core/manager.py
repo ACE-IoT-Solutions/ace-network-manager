@@ -162,7 +162,7 @@ class NetworkConfigManager:
             # If copy fails, we should try to restore the backup immediately
             try:
                 self.backup_manager.restore_backup(backup_path, verify=False)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass  # We'll report the original error
 
             return ApplyResult(
@@ -224,7 +224,7 @@ class NetworkConfigManager:
         # Step 7: Install systemd restoration service
         try:
             self.systemd.install_restoration_service(state.state_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Non-critical - continue even if systemd setup fails
             pass
 

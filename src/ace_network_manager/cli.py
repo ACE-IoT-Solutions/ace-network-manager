@@ -36,7 +36,7 @@ def cli(ctx: click.Context, debug: bool) -> None:
 @click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def apply(
-    ctx: click.Context,  # noqa: ARG001
+    ctx: click.Context,
     config_file: str,
     timeout: int,
     skip_connectivity_check: bool,
@@ -74,7 +74,7 @@ def apply(
         click.echo(f"Pending since: {status_info['pending_since']}")
         click.echo(f"Timeout at: {status_info['timeout_at']}")
 
-        remaining = status_info['time_remaining_seconds']
+        remaining = status_info["time_remaining_seconds"]
         minutes = remaining // 60
         seconds = remaining % 60
         click.secho(
@@ -110,7 +110,7 @@ def apply(
                 click.secho("✓ Systemd service is active", fg="green")
             else:
                 click.secho("⚠ Systemd service not active", fg="yellow")
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     else:
         click.secho("✗ Daemon is NOT running!", fg="red", bold=True)
@@ -215,7 +215,7 @@ def apply(
 @cli.command()
 @click.option("--state-id", help="Specific state to confirm (default: latest)")
 @click.pass_context
-def confirm(ctx: click.Context, state_id: str | None) -> None:  # noqa: ARG001
+def confirm(ctx: click.Context, state_id: str | None) -> None:
     """Confirm that a pending configuration is working correctly.
 
     This stops the rollback timer and makes the change permanent.
@@ -245,7 +245,7 @@ def confirm(ctx: click.Context, state_id: str | None) -> None:  # noqa: ARG001
 @click.option("--backup", type=click.Path(exists=True), help="Specific backup to restore")
 @click.pass_context
 def rollback(
-    ctx: click.Context,  # noqa: ARG001
+    ctx: click.Context,
     state_id: str | None,
     backup: str | None,
 ) -> None:
@@ -278,7 +278,7 @@ def rollback(
 @cli.command()
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @click.pass_context
-def status(ctx: click.Context, output_json: bool) -> None:  # noqa: ARG001
+def status(ctx: click.Context, output_json: bool) -> None:
     """Show current status of network configuration management.
 
     Displays:
@@ -292,36 +292,35 @@ def status(ctx: click.Context, output_json: bool) -> None:  # noqa: ARG001
 
     if output_json:
         click.echo(json.dumps(status_info, indent=2))
+    elif status_info["current_state"] == "idle":
+        click.secho("Status: IDLE", fg="green", bold=True)
+        click.echo("\nNo pending configuration changes.")
+        if status_info.get("last_backup"):
+            click.echo(f"\nLast backup: {status_info['last_backup']}")
     else:
-        if status_info["current_state"] == "idle":
-            click.secho("Status: IDLE", fg="green", bold=True)
-            click.echo("\nNo pending configuration changes.")
-            if status_info.get("last_backup"):
-                click.echo(f"\nLast backup: {status_info['last_backup']}")
+        click.secho("Status: PENDING CONFIRMATION", fg="yellow", bold=True)
+        click.echo(f"\nState ID: {status_info['state_id']}")
+        click.echo(f"Config: {status_info['config_path']}")
+        click.echo(f"Pending since: {status_info['pending_since']}")
+        click.echo(f"Timeout at: {status_info['timeout_at']}")
+
+        remaining = status_info["time_remaining_seconds"]
+        minutes = remaining // 60
+        seconds = remaining % 60
+        click.secho(
+            f"\nTime remaining: {minutes}m {seconds}s",
+            fg="yellow" if remaining > 60 else "red",
+            bold=True,
+        )
+
+        if status_info["systemd_armed"]:
+            click.secho("\n✓ Systemd restoration service is armed", fg="green")
         else:
-            click.secho("Status: PENDING CONFIRMATION", fg="yellow", bold=True)
-            click.echo(f"\nState ID: {status_info['state_id']}")
-            click.echo(f"Config: {status_info['config_path']}")
-            click.echo(f"Pending since: {status_info['pending_since']}")
-            click.echo(f"Timeout at: {status_info['timeout_at']}")
+            click.secho("\n✗ Systemd restoration service not armed", fg="red")
 
-            remaining = status_info['time_remaining_seconds']
-            minutes = remaining // 60
-            seconds = remaining % 60
-            click.secho(
-                f"\nTime remaining: {minutes}m {seconds}s",
-                fg="yellow" if remaining > 60 else "red",
-                bold=True,
-            )
-
-            if status_info['systemd_armed']:
-                click.secho("\n✓ Systemd restoration service is armed", fg="green")
-            else:
-                click.secho("\n✗ Systemd restoration service not armed", fg="red")
-
-            click.echo(f"\nBackup: {status_info['backup_path']}")
-            click.echo("\nTo confirm: ace-network-manager confirm")
-            click.echo("To rollback: ace-network-manager rollback")
+        click.echo(f"\nBackup: {status_info['backup_path']}")
+        click.echo("\nTo confirm: ace-network-manager confirm")
+        click.echo("To rollback: ace-network-manager rollback")
 
 
 @cli.command()
@@ -347,7 +346,7 @@ def prepare(
     ctx: click.Context,
     output: str | None,
     source_dir: str,
-    validate: bool,  # noqa: ARG001
+    validate: bool,
 ) -> None:
     """Prepare a copy of the current network configuration for editing.
 
@@ -427,7 +426,7 @@ def prepare(
 @cli.command()
 @click.argument("config_file", type=click.Path(exists=True))
 @click.pass_context
-def validate(ctx: click.Context, config_file: str) -> None:  # noqa: ARG001
+def validate(ctx: click.Context, config_file: str) -> None:
     """Validate a netplan configuration file without applying it.
 
     This performs comprehensive validation including:
@@ -460,7 +459,7 @@ def validate(ctx: click.Context, config_file: str) -> None:  # noqa: ARG001
 @cli.command()
 @click.option("--check-interval", default=5, help="Seconds between state checks (default: 5)")
 @click.pass_context
-def daemon(ctx: click.Context, check_interval: int) -> None:  # noqa: ARG001
+def daemon(ctx: click.Context, check_interval: int) -> None:
     """Run background daemon to monitor pending configurations.
 
     The daemon continuously monitors for pending network configurations
@@ -495,7 +494,7 @@ def daemon(ctx: click.Context, check_interval: int) -> None:  # noqa: ARG001
 
 @cli.command()
 @click.pass_context
-def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
+def install_daemon(ctx: click.Context) -> None:
     """Install and enable the background daemon as a systemd service.
 
     This command will:
@@ -507,7 +506,6 @@ def install_daemon(ctx: click.Context) -> None:  # noqa: ARG001
     Example:
         sudo ace-network-manager install-daemon
     """
-    import shutil
     import subprocess
 
     # Check for root
@@ -582,7 +580,9 @@ WantedBy=multi-user.target
 
         # Show status
         click.echo("\nService status:")
-        subprocess.run(["systemctl", "status", "ace-network-manager-daemon", "--no-pager"])
+        subprocess.run(
+            ["systemctl", "status", "ace-network-manager-daemon", "--no-pager"], check=False
+        )
 
         click.echo("\n" + "=" * 70)
         click.echo("The daemon will now automatically monitor pending configurations")
@@ -604,7 +604,7 @@ WantedBy=multi-user.target
 
 @cli.command()
 @click.pass_context
-def uninstall_daemon(ctx: click.Context) -> None:  # noqa: ARG001
+def uninstall_daemon(ctx: click.Context) -> None:
     """Uninstall the background daemon systemd service.
 
     This command will:
@@ -638,9 +638,7 @@ def uninstall_daemon(ctx: click.Context) -> None:  # noqa: ARG001
 
         # Disable service
         click.echo("→ Disabling service")
-        subprocess.run(
-            ["systemctl", "disable", "ace-network-manager-daemon"], check=False
-        )
+        subprocess.run(["systemctl", "disable", "ace-network-manager-daemon"], check=False)
 
         # Remove service file
         click.echo(f"→ Removing service file from {systemd_file}")
@@ -665,7 +663,7 @@ def uninstall_daemon(ctx: click.Context) -> None:  # noqa: ARG001
 
 @cli.command()
 @click.pass_context
-def cleanup_services(ctx: click.Context) -> None:  # noqa: ARG001
+def cleanup_services(ctx: click.Context) -> None:
     """Clean up stale systemd restoration services.
 
     Removes systemd services for configurations that are no longer pending.
@@ -688,9 +686,7 @@ def cleanup_services(ctx: click.Context) -> None:  # noqa: ARG001
         cleaned = systemd.cleanup_stale_services()
 
         if cleaned:
-            click.secho(
-                f"\n✓ Cleaned up {len(cleaned)} stale service(s)", fg="green", bold=True
-            )
+            click.secho(f"\n✓ Cleaned up {len(cleaned)} stale service(s)", fg="green", bold=True)
             if len(cleaned) <= 10:  # Only show details if not too many
                 click.echo("\nRemoved services for states:")
                 for state_id in cleaned:
@@ -706,7 +702,7 @@ def cleanup_services(ctx: click.Context) -> None:  # noqa: ARG001
 @cli.command(hidden=True)
 @click.option("--state-id", required=True, help="State to check and restore if needed")
 @click.pass_context
-def systemd_restore(ctx: click.Context, state_id: str) -> None:  # noqa: ARG001
+def systemd_restore(ctx: click.Context, state_id: str) -> None:
     """Internal command called by systemd service on boot.
 
     This command is executed by the systemd restoration service to check

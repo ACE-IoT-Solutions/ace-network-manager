@@ -1,8 +1,8 @@
 """Asynchronous timeout monitoring for pending configurations."""
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import timedelta
 
 from ace_network_manager.state.tracker import StateTracker
 

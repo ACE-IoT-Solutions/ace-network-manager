@@ -96,7 +96,7 @@ class NetplanBackend:
         for yaml_file in sorted(self.config_dir.glob("*.yaml")):
             try:
                 configs[yaml_file.name] = yaml_file.read_text()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Skip files we can't read
                 continue
 

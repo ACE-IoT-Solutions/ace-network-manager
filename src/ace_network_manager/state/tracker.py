@@ -97,7 +97,7 @@ class StateTracker:
                     except StateError:
                         # Re-raise StateError
                         raise
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         # Invalid state file, ignore
                         pass
 
@@ -151,7 +151,7 @@ class StateTracker:
 
             try:
                 return ConfigurationState.from_dict(data)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Corrupted state file, ignore it
                 return None
 
@@ -179,7 +179,7 @@ class StateTracker:
 
             try:
                 return ConfigurationState.from_dict(data)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
 
     def confirm_state(self, state_id: str) -> None:
@@ -317,7 +317,7 @@ class StateTracker:
 
                     if len(states) >= limit:
                         break
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Skip corrupted state files
                     continue
 
@@ -349,7 +349,7 @@ class StateTracker:
                     if state.created_at < cutoff:
                         state_file.unlink()
                         removed += 1
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Corrupted file, remove it
                     state_file.unlink()
                     removed += 1

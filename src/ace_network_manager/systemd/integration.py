@@ -103,7 +103,7 @@ class SystemdIntegration:
                 timeout=10,
             )
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Best effort - don't fail if cleanup doesn't work
             pass
 
@@ -148,7 +148,7 @@ class SystemdIntegration:
 
                 return True
 
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Restoration failed - leave pending for manual intervention
                 return False
 
@@ -175,7 +175,7 @@ class SystemdIntegration:
                 check=False,
             )
             return result.returncode == 0
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def cleanup_stale_services(self) -> list[str]:
@@ -201,7 +201,7 @@ class SystemdIntegration:
             if not filename.startswith(f"{SYSTEMD_SERVICE_PREFIX}-"):
                 continue
 
-            state_id = filename[len(f"{SYSTEMD_SERVICE_PREFIX}-"):-len(".service")]
+            state_id = filename[len(f"{SYSTEMD_SERVICE_PREFIX}-") : -len(".service")]
 
             # Check if state exists and is still pending
             state = tracker.get_state(state_id)
@@ -229,7 +229,7 @@ class SystemdIntegration:
                     )
                     service_file.unlink()
                     cleaned.append(state_id)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Best effort - continue cleaning others
                     pass
 
@@ -242,7 +242,7 @@ class SystemdIntegration:
                     timeout=10,
                     check=False,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         return cleaned
