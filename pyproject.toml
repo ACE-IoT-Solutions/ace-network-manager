@@ -30,6 +30,11 @@ dependencies = [
     "pydantic-settings>=2.7.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ACE-IoT-Solutions/ace-network-manager"
+Repository = "https://github.com/ACE-IoT-Solutions/ace-network-manager"
+Issues = "https://github.com/ACE-IoT-Solutions/ace-network-manager/issues"
+
 [project.scripts]
 ace-network-manager = "ace_network_manager.cli:cli"
 
